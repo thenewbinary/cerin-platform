@@ -4,6 +4,7 @@ import { useDb } from '@/lib/test/doubles/db'
 
 import { OpenAbConnectionLostError, OpenAbRpcError } from './openab-acp-errors'
 import { authRefusedRuntimes, forgetAuthRefusal, noteTurnSignIn } from './runtime-auth-refusal'
+import { createRuntimeModelCatalog } from './runtime-model-cache'
 
 import { nudgeDeps } from '@/lib/agent/sign-in-request'
 import { unavailableReason } from '@/lib/agent/thread-runtime'
@@ -79,6 +80,29 @@ test('a completed sign-in clears the refusal', async () => {
 
   await forgetAuthRefusal(TEAM, CODEX)
   expect(await ready(CODEX, 'codex')).toBe(true)
+})
+
+test('a refused turn hides the saved model until sign-in succeeds, scoped to its team and agent', async () => {
+  const catalog = createRuntimeModelCatalog({
+    requireInstance: async (_team, id) => ({
+      id,
+      label: id,
+      provider: 'codex',
+      status: 'active',
+      kind: 'local',
+      createdAt: '',
+    }),
+    authRefused: async (team, id) => (await authRefusedRuntimes(team)).has(id),
+    discover: async () => ({ models: [{ id: 'old-model', name: 'Saved model' }] }),
+  })
+
+  expect((await catalog(TEAM, CODEX)).models).toHaveLength(1)
+  await failed(new OpenAbRpcError('Authentication required', -32000))
+  expect(await catalog(TEAM, CODEX)).toEqual({ models: [], reason: 'signed-out' })
+  expect((await catalog('other-team', CODEX)).models).toHaveLength(1)
+  expect((await catalog(TEAM, CLAUDE)).models).toHaveLength(1)
+  await forgetAuthRefusal(TEAM, CODEX)
+  expect((await catalog(TEAM, CODEX)).models).toHaveLength(1)
 })
 
 test('failures that do not prove a refused sign-in leave the agent ready', async () => {

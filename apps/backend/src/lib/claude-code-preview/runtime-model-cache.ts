@@ -10,6 +10,7 @@ const MAX_WAITING_PER_RUNTIME = 4
  *  Identical reads share one discovery, and a runtime runs one at a time. */
 export function createRuntimeModelCatalog(deps: {
   requireInstance: (teamId: string, runtimeId: string, userId?: string) => Promise<RuntimeInstance>
+  authRefused?: (teamId: string, runtimeId: string) => Promise<boolean>
   discover: (
     teamId: string,
     instance: RuntimeInstance,
@@ -33,6 +34,8 @@ export function createRuntimeModelCatalog(deps: {
         'runtime_unavailable',
         'Connect and enable this agent to load models.',
       )
+    // A turn can disprove a computer's saved sign-in before its next model probe.
+    if (await deps.authRefused?.(teamId, runtimeId)) return { models: [], reason: 'signed-out' }
     const key = JSON.stringify([teamId, runtimeId, model ?? null])
     const pending = joins.get(key)
 

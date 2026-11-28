@@ -56,10 +56,16 @@ export function ModelSelector({
   const { data, loading, slow, saving, error, writeError } = control
   // A refused change reports its own reason; a stalled connection keeps its note.
   const failure = writeError ?? error
+  const unavailable = Boolean(
+    error ||
+    data?.status === 'offline' ||
+    data?.reason === 'signed-out' ||
+    data?.reason === 'undiscovered',
+  )
   const chipRef = useRef<HTMLButtonElement>(null)
   const sliderRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const options = data?.options.map((option) => {
+  const options = (unavailable ? [] : data?.options)?.map((option) => {
     const queued = control.queued?.find((selection) => selection.configId === option.id)
 
     return queued ? { ...option, currentValue: queued.value } : option
@@ -71,14 +77,18 @@ export function ModelSelector({
   const busy = status === 'busy'
   let name = slow ? t('Connecting…') : t('Model settings')
 
-  if (error || status === 'offline') name = t('Model unavailable')
-  if (model) name = modelName(model) || name
+  if (unavailable)
+    name = data?.reason === 'signed-out' ? t('Sign in required') : t('Model unavailable')
+  else if (model) name = modelName(model) || name
   const level = effortName(effort)
   const effortLevels = [
     ...new Set([level, ...effortStops(effort?.options ?? []).map((choice) => effortLabel(choice))]),
   ].filter(Boolean)
   const blocked =
-    disabled || saving || (status !== 'ready' && status !== 'dormant' && status !== 'busy')
+    unavailable ||
+    disabled ||
+    saving ||
+    (status !== 'ready' && status !== 'dormant' && status !== 'busy')
   const hint = modelHint(status, Boolean(model), busy, Boolean(effort || fast), data?.reason)
 
   const setOpen = control.setOpen
@@ -138,7 +148,7 @@ export function ModelSelector({
             t('Available when this task is ready for your next message.'))),
     ].filter((line): line is string => Boolean(line)),
     error: failure ?? undefined,
-    onRetry: error || status === 'offline' ? control.refresh : undefined,
+    onRetry: unavailable ? control.refresh : undefined,
     retrying: loading || saving,
   }
   // Closing returns to the message box, so typing carries on, unless the person

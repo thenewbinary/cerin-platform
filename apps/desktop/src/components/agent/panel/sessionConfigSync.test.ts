@@ -300,7 +300,7 @@ test('a failed queued model write does not apply effort to the previous model', 
 })
 
 for (const status of ['ready', 'dormant'] as const)
-  test(`a ${status} session that listed its choices is not polled; one that listed none is`, async (t) => {
+  test(`an idle ${status} session notices sign-in failure and recovery without a menu click`, async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] })
     let reads = 0
     let response: SessionConfigState = { status, options: ready('model').options }
@@ -316,14 +316,17 @@ for (const status of ['ready', 'dormant'] as const)
 
     t.after(stop)
     await flush()
+    response = { status, reason: 'signed-out', options: [] }
     t.mock.timers.tick(60_000)
     await flush()
-    assert.equal(reads, 1)
-    response = { status, options: [] }
-    await sync.refresh()
+    assert.equal(sync.getSnapshot().data?.reason, 'signed-out')
+    assert.deepEqual(sync.getSnapshot().data?.options, [])
+    response = ready('new-model')
     t.mock.timers.tick(10_000)
     await flush()
     assert.equal(reads, 3)
+    assert.equal(sync.getSnapshot().data?.options[0]?.currentValue, 'new-model')
+    assert.equal(sync.getSnapshot().data?.reason, undefined)
   })
 
 test('a slow background read never marks the settings slow, and a choice made during it is written', async (t) => {

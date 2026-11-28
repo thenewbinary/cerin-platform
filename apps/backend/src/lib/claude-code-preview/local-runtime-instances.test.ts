@@ -122,7 +122,8 @@ describe('multiple instances of one provider', () => {
       models: [{ id: 'work' }],
     })
     expect(await localRuntimeModels(idB, undefined, deps)).toMatchObject({
-      models: [{ id: 'personal' }],
+      models: [],
+      reason: 'signed-out',
     })
     expect(
       parseLocalRuntimeUrl(

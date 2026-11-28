@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { localRuntimeId, parseLocalRuntimeUrl } from '@/lib/agent/devices/local-runtime/address'
+import { localRuntimeStatusSchema } from '@/lib/agent/devices/local-runtime/protocol'
 
 import { listOwnLocalRuntimes, resolveLocalRuntimeEndpoint } from './local-runtime-catalog'
 import { localRuntimeModels } from './local-runtime-report'
@@ -664,6 +665,38 @@ describe('a computer without a model list says why', () => {
 
   test('a signed-out agent is signed out, not late with its list', async () => {
     expect(await reason(online(false))).toBe('signed-out')
+  })
+
+  for (const loggedIn of [true, false])
+    test(`an authentication failure supersedes cached models and CLI login status ${loggedIn}`, async () => {
+      const report = online(loggedIn)
+
+      report.status!.agents['claude-code']!.models = {
+        models: [{ id: 'old-model', name: 'Old model' }],
+        defaultModel: 'old-model',
+        controls: {},
+        failed: true,
+        failureReason: 'signed-out',
+      }
+      report.status = localRuntimeStatusSchema.parse(report.status)
+      presence = report
+      expect(
+        await localRuntimeModels(runtimeId, undefined, { getPresence: async () => report }),
+      ).toEqual({ models: [], reason: 'signed-out' })
+      expect((await listOwnLocalRuntimes('t1', 'owner', deps))[0]?.local.signedIn).toBe(false)
+    })
+
+  test('a signed-out CLI cannot advertise a cached successful model list', async () => {
+    const report = online(false)
+
+    report.status!.agents['claude-code']!.models = {
+      models: [{ id: 'old-model', name: 'Old model' }],
+      defaultModel: 'old-model',
+      controls: {},
+    }
+    expect(
+      await localRuntimeModels(runtimeId, undefined, { getPresence: async () => report }),
+    ).toEqual({ models: [], reason: 'signed-out' })
   })
 
   test('a computer that has not reported at all has not reported its list', async () => {

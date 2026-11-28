@@ -192,6 +192,38 @@ function mount() {
 }
 
 // #3709: OpenCode opened a card holding only its model's name, then a list below the chip.
+test('sign-in failure visibly replaces a previously displayed model, then recovers', async () => {
+  const picker = mount()
+
+  try {
+    await picker.render(withEffort)
+    assert.match(picker.chip().getAttribute('aria-label')!, /gpt-5.5/)
+    await picker.render({ ...withEffort, reason: 'signed-out' })
+    assert.match(picker.chip().getAttribute('aria-label')!, /Sign in required/)
+    assert.doesNotMatch(picker.chip().getAttribute('aria-label')!, /gpt-5.5|Low/)
+    await act(() => picker.chip().click())
+    assert.ok(picker.rows().every((row) => row.disabled))
+    assert.match(dom.document.body.textContent!, /signed out|Sign in/)
+    await act(() => picker.chip().click())
+    await picker.render(withEffort)
+    assert.match(picker.chip().getAttribute('aria-label')!, /gpt-5.5/)
+  } finally {
+    await act(() => picker.root.unmount())
+  }
+})
+
+test('a failed model refresh cannot display the cached model as current', async () => {
+  const picker = mount()
+
+  try {
+    await picker.render({ ...withEffort, reason: 'undiscovered' })
+    assert.match(picker.chip().getAttribute('aria-label')!, /Model unavailable/)
+    assert.doesNotMatch(picker.chip().getAttribute('aria-label')!, /gpt-5.5|Low/)
+  } finally {
+    await act(() => picker.root.unmount())
+  }
+})
+
 test('a runtime without effort opens its models in one click, grouped by provider', async () => {
   const picker = mount()
 
