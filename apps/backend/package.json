@@ -1,6 +1,6 @@
 {
   "name": "cerin-backend",
-  "version": "0.145.8",
+  "version": "0.145.9",
   "private": true,
   "type": "module",
   "scripts": {
