@@ -62,29 +62,14 @@ async function authenticateCookieAdmin(
 
 // Admin = member of the admin team (config.admin.teamId). Unconfigured means
 // nobody is an admin, which is the safe end of that choice.
-// Membership is cached in-memory so the check doesn't add a Mongo query to
-// every admin request; a revoked member keeps access for at most the TTL.
-const ADMIN_MEMBERSHIP_TTL_MS = 5 * 60_000
-const ADMIN_MEMBERSHIP_CACHE_MAX = 1000
-const adminMembershipCache = new Map<string, { isAdmin: boolean; expiresAt: number }>()
+// Admin requests are rare, so read membership live and let grants or
+// revocations take effect on the very next request.
 
 async function isAdminUser(userId: string): Promise<boolean> {
-  const now = Date.now()
-  const cached = adminMembershipCache.get(userId)
-
-  if (cached && cached.expiresAt > now) return cached.isAdmin
   const adminTeamId = config.admin.teamId
 
   if (!adminTeamId) return false
   const membership = await getTeamMembership(userId, adminTeamId)
-  const isAdmin = membership !== null
 
-  if (adminMembershipCache.size >= ADMIN_MEMBERSHIP_CACHE_MAX) {
-    const oldest = adminMembershipCache.keys().next().value
-
-    if (oldest !== undefined) adminMembershipCache.delete(oldest)
-  }
-  adminMembershipCache.set(userId, { isAdmin, expiresAt: now + ADMIN_MEMBERSHIP_TTL_MS })
-
-  return isAdmin
+  return membership !== null
 }
