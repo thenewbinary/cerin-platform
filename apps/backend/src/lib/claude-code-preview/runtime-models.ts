@@ -6,6 +6,7 @@ import { fastChoicesSchema } from '@/lib/agent/devices/local-runtime/protocol'
 
 import { controlRegistry } from './agent-chat-registry'
 import { OpenAbAcpClient } from './openab-acp-client'
+import { authRefusedRuntimes } from './runtime-auth-refusal'
 import { developmentRuntimeEndpoint, requireRuntimeInstance } from './runtime-catalog'
 import { resolveDefaultModel } from './runtime-default-model'
 import { localRuntimeModels } from './local-runtime-report'
@@ -190,6 +191,7 @@ export function requireModelRuntimeInstance(
 
 export const runtimeModelCatalog = createRuntimeModelCatalog({
   requireInstance: requireModelRuntimeInstance,
+  authRefused: async (teamId, runtimeId) => (await authRefusedRuntimes(teamId)).has(runtimeId),
   discover: async (teamId, instance, model) =>
     resolveDefaultModel(await discoverModels(teamId, instance, model)),
 })

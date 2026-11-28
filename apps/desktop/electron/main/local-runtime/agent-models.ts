@@ -1,4 +1,5 @@
 import type { Agent, LocalAgentRun, LocalRuntimeControllerDeps } from './controller-types.ts'
+import type { LocalModelCatalog } from './model-probe.ts'
 
 /** Waits between failed probes; each probe starts the agent's CLI, so a lasting failure backs off. */
 export const MODEL_RETRY_MS = [60_000, 120_000, 300_000, 600_000]
@@ -39,6 +40,19 @@ export function discoverModels(
   let readAt = 0
   // Reads failed in a row; an adapter that keeps failing is not started again on demand.
   let failedReads = 0
+  const failed = (failureReason?: 'signed-out') => {
+    const models: LocalModelCatalog = {
+      models: [],
+      defaultModel: '',
+      controls: {},
+      failed: true,
+      ...(failureReason ? { failureReason } : {}),
+    }
+    const changed = JSON.stringify(models) !== JSON.stringify(agent.models)
+
+    agent.models = models
+    if (changed) sendStatus()
+  }
   // Whether the list changed; undefined when the read failed or the run is gone.
   const read = () => {
     readAt = Date.now()
@@ -68,10 +82,15 @@ export function discoverModels(
             provider: run.provider,
             error: String(error),
           })
-          if (!agent.models) {
-            agent.models = { models: [], defaultModel: '', controls: {}, failed: true }
-            sendStatus()
-          }
+          // A rejected sign-in must not keep a previously good list looking current.
+          // Keep retrying: a credential file may still look signed in to the CLI probe.
+          const authRequired = [
+            /authentication required|not authenticated|unauthenticated|unauthorized|signed out/iu,
+            /(?:sign|log)[ -]?in (?:required|expired|failed)/iu,
+            /(?:invalid|expired|revoked) (?:access |refresh )?(?:token|credentials|api key)/iu,
+          ].some((pattern) => pattern.test(String(error)))
+
+          failed(authRequired ? 'signed-out' : undefined)
 
           return undefined
         },
@@ -87,6 +106,7 @@ export function discoverModels(
   const signedOut = () => agent.cli?.installed === true && agent.cli.loggedIn === false
   const cycle = (failures: number) => {
     if (signedOut()) {
+      failed('signed-out')
       setTimeout(() => {
         if (live()) cycle(failures)
       }, MODEL_SIGNED_OUT_MS).unref()
@@ -95,7 +115,7 @@ export function discoverModels(
     }
     void read().then((changed) => {
       if (!live()) return
-      // The last good list stays reported while a failed read is tried again.
+      // A failed read reports unavailable until a successful probe replaces it.
       const delay =
         changed === undefined
           ? MODEL_RETRY_MS[Math.min(failures, MODEL_RETRY_MS.length - 1)]
@@ -119,11 +139,18 @@ export function discoverModels(
 
   readers.add({
     live,
-    read: (pickerOpened) =>
-      inFlight ??
-      (signedOut() || Date.now() - readAt < onDemandGap(pickerOpened)
-        ? Promise.resolve(false)
-        : read()),
+    read: (pickerOpened) => {
+      if (signedOut()) {
+        failed('signed-out')
+
+        return Promise.resolve(false)
+      }
+
+      return (
+        inFlight ??
+        (Date.now() - readAt < onDemandGap(pickerOpened) ? Promise.resolve(false) : read())
+      )
+    },
   })
   const first = MODEL_FIRST_READ_MS[run.provider]
 

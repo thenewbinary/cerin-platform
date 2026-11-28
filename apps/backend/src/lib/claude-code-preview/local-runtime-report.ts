@@ -23,11 +23,12 @@ export async function localRuntimeModels(
   const agent = ref
     ? reportedLocalAgent((await deps.getPresence(ref.userId, ref.deviceId))?.status, ref)
     : undefined
+
+  if (agent?.cli.loggedIn === false) return { models: [], reason: 'signed-out' }
   const catalog = agent?.models?.failed ? undefined : agent?.models
   const missing = agent?.models?.failed ? 'undiscovered' : 'unreported'
 
-  if (!catalog)
-    return { models: [], reason: agent?.cli.loggedIn === false ? 'signed-out' : missing }
+  if (!catalog) return { models: [], reason: missing }
   const modelId = model && model !== 'default' ? model : catalog.defaultModel
   // A controls-only report names no model: its entry answers a caller asking for none.
   const split = catalog.controlsOnly && (!model || model === 'default')

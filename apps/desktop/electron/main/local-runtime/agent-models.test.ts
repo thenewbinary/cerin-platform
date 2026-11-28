@@ -41,6 +41,51 @@ function setup(results: (LocalModelCatalog | Error)[], provider = 'codex') {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve))
 
+for (const [message, reason] of [
+  ['Model discovery failed: {"code":-32000,"message":"Authentication required"}', 'signed-out'],
+  ['Model discovery timed out', undefined],
+] as const)
+  test(`a failed refresh retires the old model list and recovers: ${message}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const next = {
+      ...catalog,
+      models: [{ id: 'new-model', name: 'New model' }],
+      defaultModel: 'new-model',
+    }
+    const { agent, current, sent } = setup([catalog, new Error(message), next])
+
+    t.after(() => {
+      current.value = false
+    })
+    await settle()
+    assert.equal(agent.models?.defaultModel, 'gpt-5')
+    t.mock.timers.tick(MODEL_REFRESH_MS)
+    await settle()
+    assert.deepEqual(agent.models?.models, [])
+    assert.equal(agent.models?.failed, true)
+    assert.equal(agent.models?.failureReason, reason)
+    assert.equal(sent(), 2)
+    t.mock.timers.tick(MODEL_RETRY_MS[0])
+    await settle()
+    assert.deepEqual(agent.models, next)
+    assert.equal(sent(), 3)
+  })
+
+test('a CLI signing out invalidates its previously discovered models', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { agent, current } = setup([catalog])
+
+  t.after(() => {
+    current.value = false
+  })
+  await settle()
+  agent.cli = { installed: true, path: '/bin/codex', loggedIn: false }
+  t.mock.timers.tick(MODEL_REFRESH_MS)
+  await settle()
+  assert.deepEqual(agent.models?.models, [])
+  assert.equal(agent.models?.failureReason, 'signed-out')
+})
+
 test('a failed model probe is tried again, so the agent does not stay without models', async () => {
   mock.timers.enable({ apis: ['setTimeout'] })
   try {
@@ -135,7 +180,8 @@ test('a signed-out CLI is not started to list models until it signs in', async (
     await settle()
     assert.equal(probes, 1)
     assert.deepEqual(agent.models, catalog)
-    assert.equal(sent, 1)
+    // The sign-in failure is reported before the successful model list.
+    assert.equal(sent, 2)
   } finally {
     mock.timers.reset()
   }

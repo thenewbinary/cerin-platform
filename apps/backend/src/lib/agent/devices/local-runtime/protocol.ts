@@ -70,6 +70,7 @@ export const localModelCatalogSchema = z.object({
   /** The computer read this agent's models and the read failed, so this emptiness is
    *  not a list still on its way and nobody should be told to wait for one. */
   failed: z.literal(true).optional(),
+  failureReason: z.literal('signed-out').optional(),
 })
 
 /** One usage window as Anthropic or ChatGPT reports it. A window that does not

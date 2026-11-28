@@ -64,18 +64,17 @@ export class SessionConfigSync {
 
   private schedule() {
     clearTimeout(this.poll)
-    // Listed choices change only when someone picks one, and a pick, a reply
-    // ending, the menu opening and the window regaining focus all refresh;
-    // polling would only re-run the runtime's model probe. Keep polling until
-    // the session is idle and has listed some, or a failed read has recovered.
+    // Sign-in and available models can change while an idle chat stays open.
+    // Keep a slow background read even after success so a refusal is visible
+    // without a menu click; an unavailable catalog is checked more often.
     const { data, error } = this.snapshot
     const settled =
       !error && (data?.status === 'ready' || data?.status === 'dormant') && data.options.length
 
-    if (this.active && !settled)
+    if (this.active)
       this.poll = setTimeout(
         () => void this.refresh(),
-        Math.min(10_000 * 2 ** this.failures, 60_000),
+        settled ? 60_000 : Math.min(10_000 * 2 ** this.failures, 60_000),
       )
   }
 

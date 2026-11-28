@@ -94,11 +94,17 @@ export function reportedLocalAgent(
   status: LocalRuntimeStatus | undefined,
   ref: Pick<LocalAgentRef, 'provider' | 'instanceId'>,
 ): LocalAgentStatus | undefined {
-  return ref.instanceId
+  const agent = ref.instanceId
     ? status?.instances?.find(
         (instance) => instance.instanceId === ref.instanceId && instance.provider === ref.provider,
       )
     : status?.agents[ref.provider]
+
+  // A saved credential can look signed in even after the provider rejects it.
+  // Model discovery is an authenticated check; a successful recheck clears this.
+  return agent?.models?.failed && agent.models.failureReason === 'signed-out'
+    ? { ...agent, cli: { ...agent.cli, loggedIn: false } }
+    : agent
 }
 
 /**
